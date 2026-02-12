@@ -1,0 +1,38 @@
+# Databricks notebook source
+# MAGIC %md
+# MAGIC # Gold Layer
+# MAGIC
+# MAGIC The Gold notebook focuses on generating metrics, aggregates, and features ready for advanced analytics or machine learning models. The objective is to create final tables optimized for consumption by business users, dashboards, or predictive models, ensuring data is accurate and relevant.
+
+# COMMAND ----------
+
+path = "/FileStore/tables/DF_Cleaned.csv"
+df_gold_input = spark.table("default.df_cleaned")
+
+print("Filas cargadas:", df_gold_input.count())
+print("Columnas:", df_gold_input.columns)
+df_gold_input.printSchema()
+display(df_gold_input.limit(20))
+
+
+# COMMAND ----------
+
+# DBTITLE 1,Annotation Metrics
+from pyspark.sql.functions import col, count, avg
+
+# Class balance
+df_class_balance = df_gold_input.groupBy("is_delayed").agg(count("*").alias("qty_delayed"))
+
+# Delays by the carrier
+df_carrier_delay = df_gold_input.groupBy("UniqueCarrier").agg(avg("ArrDelay_num").alias("avg_arr_delay"))
+
+# Delays per week
+df_weekday_delay = df_gold_input.groupBy("DayOfWeek").agg(avg("DepDelay_num").alias("avg_dep_delay"))
+
+# Gold metrics
+df_class_balance.write.format("delta").mode("overwrite").saveAsTable("default.metrics_class_balance")
+df_carrier_delay.write.format("delta").mode("overwrite").saveAsTable("default.metrics_carrier_delay")
+df_weekday_delay.write.format("delta").mode("overwrite").saveAsTable("default.metrics_weekday_delay")
+
+# COMMAND ----------
+
