@@ -1,0 +1,97 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "application/vnd.databricks.v1+cell": {
+     "cellMetadata": {},
+     "inputWidgets": {},
+     "nuid": "ae185272-a1e4-46c0-8d50-b2cfdb1ec3b7",
+     "showTitle": false,
+     "tableResultSettingsMap": {},
+     "title": ""
+    }
+   },
+   "source": [
+    "# Bronze Layer\n",
+    "\n",
+    "This notebook handles the ingestion of raw data from the 'airlines' dataser from Databricks. The goal is to store the data exactly as received, without transformations, to ensure traceability and recovery. Temporary views are created, and initial records are explored to validate ingestion."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "application/vnd.databricks.v1+cell": {
+     "cellMetadata": {
+      "byteLimit": 2048000,
+      "rowLimit": 10000
+     },
+     "inputWidgets": {},
+     "nuid": "e7bc8001-aef0-40ca-b5e5-94eef4e109d4",
+     "showTitle": true,
+     "tableResultSettingsMap": {},
+     "title": "Bronze"
+    }
+   },
+   "outputs": [
+    {
+     "output_type": "stream",
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "+----+-----+----------+---------+-------+----------+-------+----------+-------------+---------+-------+-----------------+--------------+-------+--------+--------+------+----+--------+------+-------+---------+----------------+--------+------------+------------+--------+-------------+-----------------+------------+------------+\n|Year|Month|DayofMonth|DayOfWeek|DepTime|CRSDepTime|ArrTime|CRSArrTime|UniqueCarrier|FlightNum|TailNum|ActualElapsedTime|CRSElapsedTime|AirTime|ArrDelay|DepDelay|Origin|Dest|Distance|TaxiIn|TaxiOut|Cancelled|CancellationCode|Diverted|CarrierDelay|WeatherDelay|NASDelay|SecurityDelay|LateAircraftDelay|IsArrDelayed|IsDepDelayed|\n+----+-----+----------+---------+-------+----------+-------+----------+-------------+---------+-------+-----------------+--------------+-------+--------+--------+------+----+--------+------+-------+---------+----------------+--------+------------+------------+--------+-------------+-----------------+------------+------------+\n|1987|   10|        14|        3|    741|       730|    912|       849|           PS|     1451|     NA|               91|            79|     NA|      23|      11|   SAN| SFO|     447|    NA|     NA|        0|              NA|       0|          NA|          NA|      NA|           NA|               NA|         YES|         YES|\n|1987|   10|        15|        4|    729|       730|    903|       849|           PS|     1451|     NA|               94|            79|     NA|      14|      -1|   SAN| SFO|     447|    NA|     NA|        0|              NA|       0|          NA|          NA|      NA|           NA|               NA|         YES|          NO|\n|1987|   10|        17|        6|    741|       730|    918|       849|           PS|     1451|     NA|               97|            79|     NA|      29|      11|   SAN| SFO|     447|    NA|     NA|        0|              NA|       0|          NA|          NA|      NA|           NA|               NA|         YES|         YES|\n|1987|   10|        18|        7|    729|       730|    847|       849|           PS|     1451|     NA|               78|            79|     NA|      -2|      -1|   SAN| SFO|     447|    NA|     NA|        0|              NA|       0|          NA|          NA|      NA|           NA|               NA|          NO|          NO|\n|1987|   10|        19|        1|    749|       730|    922|       849|           PS|     1451|     NA|               93|            79|     NA|      33|      19|   SAN| SFO|     447|    NA|     NA|        0|              NA|       0|          NA|          NA|      NA|           NA|               NA|         YES|         YES|\n|1987|   10|        21|        3|    728|       730|    848|       849|           PS|     1451|     NA|               80|            79|     NA|      -1|      -2|   SAN| SFO|     447|    NA|     NA|        0|              NA|       0|          NA|          NA|      NA|           NA|               NA|          NO|          NO|\n|1987|   10|        22|        4|    728|       730|    852|       849|           PS|     1451|     NA|               84|            79|     NA|       3|      -2|   SAN| SFO|     447|    NA|     NA|        0|              NA|       0|          NA|          NA|      NA|           NA|               NA|         YES|          NO|\n|1987|   10|        23|        5|    731|       730|    902|       849|           PS|     1451|     NA|               91|            79|     NA|      13|       1|   SAN| SFO|     447|    NA|     NA|        0|              NA|       0|          NA|          NA|      NA|           NA|               NA|         YES|         YES|\n|1987|   10|        24|        6|    744|       730|    908|       849|           PS|     1451|     NA|               84|            79|     NA|      19|      14|   SAN| SFO|     447|    NA|     NA|        0|              NA|       0|          NA|          NA|      NA|           NA|               NA|         YES|         YES|\n|1987|   10|        25|        7|    729|       730|    851|       849|           PS|     1451|     NA|               82|            79|     NA|       2|      -1|   SAN| SFO|     447|    NA|     NA|        0|              NA|       0|          NA|          NA|      NA|           NA|               NA|         YES|          NO|\n+----+-----+----------+---------+-------+----------+-------+----------+-------------+---------+-------+-----------------+--------------+-------+--------+--------+------+----+--------+------+-------+---------+----------------+--------+------------+------------+--------+-------------+-----------------+------------+------------+\n\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Read raw data directly\n",
+    "df_bronze = spark.read.csv(\"/databricks-datasets/airlines/part-00000\", header=True, inferSchema=True)\n",
+    "\n",
+    "# Temporal View\n",
+    "df_bronze.createOrReplaceTempView(\"bronze_airlines\")\n",
+    "\n",
+    "# SQL Consultation\n",
+    "spark.sql(\"SELECT * FROM bronze_airlines LIMIT 10\").show()\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 0,
+   "metadata": {
+    "application/vnd.databricks.v1+cell": {
+     "cellMetadata": {},
+     "inputWidgets": {},
+     "nuid": "7d5ef232-8ab7-4dce-8b93-0159abfc3734",
+     "showTitle": false,
+     "tableResultSettingsMap": {},
+     "title": ""
+    }
+   },
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "application/vnd.databricks.v1+notebook": {
+   "computePreferences": null,
+   "dashboards": [],
+   "environmentMetadata": {
+    "base_environment": "",
+    "environment_version": "4"
+   },
+   "inputWidgetPreferences": null,
+   "language": "python",
+   "notebookMetadata": {
+    "pythonIndentUnit": 4
+   },
+   "notebookName": "Bronze_Ingestion",
+   "widgets": {}
+  },
+  "language_info": {
+   "name": "python"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 0
+}
