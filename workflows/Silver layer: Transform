@@ -1,0 +1,117 @@
+# Databricks notebook source
+# MAGIC %md
+# MAGIC # Silver Layer
+# MAGIC
+# MAGIC This layer processes and cleans data from the Bronze layer. The purpose is to apply transformations, remove duplicates, correct null values, and prepare the data for analysis. Intermediate tables are generated with structured, higher-quality data, ready for aggregation or enrichment.
+
+# COMMAND ----------
+
+# DBTITLE 1,Charging Data
+# Databricks community does not allow the use of global variables between notebooks
+# Therefore the dataset will be charged again, but the proceced and clean data set will be
+# Saved in a csv file to later be use in the gold layer.
+
+df_bronze = spark.read.csv("/databricks-datasets/airlines/part-00000", header=True, inferSchema=True)
+df_bronze.createOrReplaceTempView("bronze_airlines")
+print("Vista temporal bronze_airlines creada. Filas:", df_bronze.count())
+
+
+# COMMAND ----------
+
+# DBTITLE 1,Silver
+df_silver = spark.sql("SELECT * FROM bronze_airlines")
+df_silver_clean = df_silver.dropna(subset=["Origin", "Dest"]).dropDuplicates()
+df_silver_clean.createOrReplaceTempView("silver_airlines")
+print("Temporal View silver_airlines created. Rows:", df_silver_clean.count())
+spark.sql("SELECT Origin, Dest, COUNT(*) as Flights FROM silver_airlines GROUP BY Origin, Dest LIMIT 10").show(truncate=False)
+
+
+# COMMAND ----------
+
+# DBTITLE 1,Cleaning
+from pyspark.sql import functions as F
+
+# 0) Assuring the input
+try:
+    df = df_silver_clean
+    print("Using df_silver_clean.")
+except NameError:
+    raise RuntimeError("df_silver_clean does not exist in this secion. Executing df_silver.")
+
+# 1) initial couting (informative)
+cnt_non_numeric_arr_before = df.select(F.count(F.when(~F.col("ArrDelay").rlike(r"^-?\d+(\.\d+)?$"), True)).alias("cnt")).collect()[0]["cnt"]
+cnt_non_numeric_dep_before = df.select(F.count(F.when(~F.col("DepDelay").rlike(r"^-?\d+(\.\d+)?$"), True)).alias("cnt")).collect()[0]["cnt"]
+cnt_isarr_nonstandard_before = df.select(F.count(F.when(~F.col("IsArrDelayed").isin("YES","NO") & F.col("IsArrDelayed").isNotNull(), True)).alias("cnt")).collect()[0]["cnt"]
+print(f"Before Cleaning -> non-numeric ArrDelay : {cnt_non_numeric_arr_before}, non-numeric DepDelay : {cnt_non_numeric_dep_before}, IsArrDelayed not standar: {cnt_isarr_nonstandard_before}")
+
+# 2) Normalizing ArrDelay y DepDelay: 'NA' or stings -> NULL; valid numbers -> double
+df_norm = (
+    df
+    .withColumn("ArrDelay_str", F.col("ArrDelay").cast("string"))
+    .withColumn("DepDelay_str", F.col("DepDelay").cast("string"))
+    .withColumn("ArrDelay_num",
+        F.when(F.col("ArrDelay_str").rlike(r"^-?\d+(\.\d+)?$"), F.col("ArrDelay_str").cast("double"))
+         .otherwise(F.lit(None).cast("double"))
+    )
+    .withColumn("DepDelay_num",
+        F.when(F.col("DepDelay_str").rlike(r"^-?\d+(\.\d+)?$"), F.col("DepDelay_str").cast("double"))
+         .otherwise(F.lit(None).cast("double"))
+    )
+    .drop("ArrDelay_str", "DepDelay_str")
+)
+
+# 3) Mapping IsArrDelayed / IsDepDelayed ("YES"/"NO") a 1/0; manage mayus/minus and unexpected values.
+df_norm = df_norm.withColumn(
+    "IsArrDelayed_bin",
+    F.when(F.col("IsArrDelayed").isNull(), None)
+     .when(F.upper(F.col("IsArrDelayed")) == "YES", F.lit(1))
+     .when(F.upper(F.col("IsArrDelayed")) == "NO", F.lit(0))
+     .otherwise(None)
+)
+
+df_norm = df_norm.withColumn(
+    "IsDepDelayed_bin",
+    F.when(F.col("IsDepDelayed").isNull(), None)
+     .when(F.upper(F.col("IsDepDelayed")) == "YES", F.lit(1))
+     .when(F.upper(F.col("IsDepDelayed")) == "NO", F.lit(0))
+     .otherwise(None)
+)
+
+# 4) Defenitive column is_delayed definitiva: will chose IsArrDelayed_bin if exists, if not then ArrDelay_num > 15
+df_norm = df_norm.withColumn(
+    "is_delayed",
+    F.when(F.col("IsArrDelayed_bin").isNotNull(), F.col("IsArrDelayed_bin"))
+     .otherwise(F.when(F.col("ArrDelay_num") > 15, F.lit(1)).otherwise(F.lit(0)))
+)
+
+# 5) Quality and droping duplicates.
+df_cleaned = (
+    df_norm
+    .dropna(subset=["Origin", "Dest", "Year", "Month"])
+    .dropDuplicates()
+)
+
+# 6) Create/update temporal view with the already cleaned dataframe
+df_cleaned.createOrReplaceTempView("silver_airlines_normalized")
+
+# 7) Checing for non numerical remaining values
+cnt_non_numeric_arr_after = df_cleaned.select(F.count(F.when(F.col("ArrDelay_num").isNull(), True)).alias("cnt")).collect()[0]["cnt"]
+cnt_non_numeric_dep_after = df_cleaned.select(F.count(F.when(F.col("DepDelay_num").isNull(), True)).alias("cnt")).collect()[0]["cnt"]
+print(f"After cleaning -> ArrDelay NULLs: {cnt_non_numeric_arr_after}, DepDelay NULLs: {cnt_non_numeric_dep_after}")
+
+# 8) Squema 
+print("silver_airlines_normalized squema:")
+df_cleaned.printSchema()
+print("Sample (top 20):")
+df_cleaned.select("Year","Month","Origin","Dest","ArrDelay","ArrDelay_num","DepDelay","DepDelay_num","IsArrDelayed","IsArrDelayed_bin","is_delayed").show(20, truncate=False)
+
+
+# COMMAND ----------
+
+# Since there are not global variables in databricks community we need to save the dataframe as a csv file
+# To later load it in the Gold layer.
+pdf = df_cleaned.toPandas()
+pdf.to_csv("DF_Cleaned.csv", index=False)
+
+# COMMAND ----------
+
