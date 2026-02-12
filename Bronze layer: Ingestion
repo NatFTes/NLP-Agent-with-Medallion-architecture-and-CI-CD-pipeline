@@ -1,0 +1,21 @@
+# Databricks notebook source
+# MAGIC %md
+# MAGIC # Bronze Layer
+# MAGIC
+# MAGIC This notebook handles the ingestion of raw data from the 'airlines' dataser from Databricks. The goal is to store the data exactly as received, without transformations, to ensure traceability and recovery. Temporary views are created, and initial records are explored to validate ingestion.
+
+# COMMAND ----------
+
+# DBTITLE 1,Bronze
+# Read raw data directly
+df_bronze = spark.read.csv("/databricks-datasets/airlines/part-00000", header=True, inferSchema=True)
+
+# Temporal View
+df_bronze.createOrReplaceTempView("bronze_airlines")
+
+# SQL Consultation
+spark.sql("SELECT * FROM bronze_airlines LIMIT 10").show()
+
+
+# COMMAND ----------
+
